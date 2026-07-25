@@ -1,0 +1,61 @@
+project:
+  name: ntn-handover-repro
+  seed: 7
+  artifact_dir: artifacts
+
+data:
+  dataset_dir: artifacts/data
+  dataset_file: ntn_dataset.npz
+  metadata_file: metadata.json
+  celestrak_url: "https://celestrak.org/NORAD/elements/gp.php?GROUP=STARLINK&FORMAT=TLE"
+  prefer_celestrak: true
+  num_satellites: 25
+  num_airplanes: 8
+  num_steps: 8441
+  step_seconds: 10
+  theta_min_deg: 20.0
+  theta_max_deg: 90.0
+  demand_min: 0.2
+  demand_max: 0.5
+  history_length: 25
+  default_horizon: 5
+  synthetic_satellite_altitude_km: 1200.0
+  airplane_altitude_km: 10.7
+  route_jitter_deg: 1.5
+  congestion_base_min: 0.05
+  congestion_base_max: 0.45
+
+transformer:
+  d_model: 64
+  nhead: 4
+  num_layers: 2
+  dim_feedforward: 128
+  dropout: 0.1
+  learning_rate: 0.0001
+  batch_size: 256
+  epochs: 25
+  fast_epochs: 2
+
+rl:
+  alpha: 1.0
+  beta: 0.05
+  gamma: 0.99
+  invalid_action_penalty: -0.25
+  hidden_sizes: [256, 256]
+  learning_rate: 0.0001
+  batch_size: 256
+  train_episodes: 300
+  fast_episodes: 2
+  eval_episodes: 50
+  episode_steps: 512
+  replay_capacity: 20000
+  dqn_target_update: 10
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  epsilon_decay_episodes: 180
+  entropy_coef: 0.01
+  value_coef: 0.5
+
+evaluation:
+  seeds: [0, 1, 2, 3, 4]
+

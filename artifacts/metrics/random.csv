@@ -1,0 +1,3 @@
+agent,episode,total_reward,handovers,avg_satisfaction,invalid_actions
+random,0,5.372723887853356,83,0.6491228070175439,140
+random,1,-31.19398288569552,37,0.39849624060150374,240
