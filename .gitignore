@@ -1,8 +1,57 @@
+## Python bytecode and caches
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
-.venv/
-artifacts/checkpoints/
-artifacts/figures/
-*.pt
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.coverage
+.coverage.*
+htmlcov/
 
+## Virtual environments and local env files
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+
+## Build and packaging outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+## Reproduction outputs
+artifacts/
+runs/
+logs/
+reports/generated/
+
+## ML checkpoints and experiment trackers
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.npz
+*.npy
+events.out.tfevents*
+wandb/
+mlruns/
+lightning_logs/
+codecarbon.csv
+emissions.csv
+
+## Notebook and editor state
+.ipynb_checkpoints/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+## OS files
+.DS_Store
+Thumbs.db
