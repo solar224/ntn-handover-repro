@@ -7,23 +7,45 @@ data:
   dataset_dir: artifacts/data
   dataset_file: ntn_dataset.npz
   metadata_file: metadata.json
+  tle_cache_file: celestrak_starlink.tle
+  tle_snapshot_file: configs/celestrak_starlink_2026-07-24.tle
+  tle_refresh_seconds: 7200
   celestrak_url: "https://celestrak.org/NORAD/elements/gp.php?GROUP=STARLINK&FORMAT=TLE"
   prefer_celestrak: true
+  allow_synthetic_fallback: false
+  # Repaired reconstruction: the paper exposes 25 satellite feature/action
+  # slots but does not publish their catalog IDs or selection rule. Build the
+  # slots dynamically from a stable Starlink shell instead of taking the first
+  # 25 records returned by CelesTrak.
+  satellite_selection_mode: dynamic_top_elevation
+  candidate_pool_altitude_min_km: 500.0
+  candidate_pool_altitude_max_km: 600.0
+  candidate_chunk_size: 32
+  max_no_visible_fraction: 0.01
   num_satellites: 25
   num_airplanes: 8
   num_steps: 8441
   step_seconds: 10
+  # Undisclosed by the paper. Pin propagation near the cached TLE epochs so
+  # repeated dataset builds use identical orbital geometry.
+  propagation_start_utc: "2026-07-27T12:00:00+00:00"
   theta_min_deg: 20.0
   theta_max_deg: 90.0
   demand_min: 0.2
   demand_max: 0.5
   history_length: 25
   default_horizon: 5
+  # Use one common comparison interval for no-prediction, horizon-5, and
+  # horizon-25 policies.
+  use_common_experiment_window: true
+  max_prediction_horizon: 25
   synthetic_satellite_altitude_km: 1200.0
   airplane_altitude_km: 10.7
   route_jitter_deg: 1.5
   congestion_base_min: 0.05
-  congestion_base_max: 0.45
+  # The paper only states congestion in [0, 1]. Use a broad range so resource
+  # allocation and demand satisfaction are not identically one.
+  congestion_base_max: 0.95
 
 transformer:
   d_model: 64
@@ -33,6 +55,10 @@ transformer:
   dropout: 0.1
   learning_rate: 0.0001
   batch_size: 256
+  # Undisclosed by the paper. A chronological holdout avoids leakage between
+  # heavily overlapping trajectory windows.
+  split_mode: chronological
+  validation_fraction: 0.15
   epochs: 25
   fast_epochs: 2
 
@@ -46,8 +72,17 @@ rl:
   batch_size: 256
   train_episodes: 300
   fast_episodes: 2
+  fast_episode_steps: 64
   eval_episodes: 50
-  episode_steps: 512
+  # Repaired equation-level reconstruction: process every airplane at each
+  # physical timestep and reserve shared capacity by persistent NORAD ID.
+  multi_airplane_allocation: true
+  shuffle_airplanes_each_timestep: true
+  capacity_epsilon: 1.0e-8
+  # The paper does not disclose episode construction. This upper bound is
+  # intersected with the common history/horizon-valid comparison interval.
+  episode_steps: 8440
+  a2c_rollout_steps: 32
   replay_capacity: 20000
   dqn_target_update: 10
   epsilon_start: 1.0

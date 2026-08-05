@@ -57,7 +57,9 @@ class TransformerTrajectoryModel:
                     batch_first=True,
                 )
                 self.encoder = nn.TransformerEncoder(layer, num_layers=num_layers)
-                self.head = nn.Sequential(nn.LayerNorm(d_model), nn.Linear(d_model, horizon * 3))
+                # The paper predicts one position at t + horizon (Eq. 8), not
+                # every intermediate position from t + 1 through t + horizon.
+                self.head = nn.Sequential(nn.LayerNorm(d_model), nn.Linear(d_model, 3))
                 pe = PositionalEncoding(d_model, max_len=max(history_length + 1, 512)).pe
                 self.register_buffer("positional_encoding", pe)
 
@@ -65,8 +67,7 @@ class TransformerTrajectoryModel:
                 x = self.input_proj(x)
                 x = x + self.positional_encoding[:, : x.shape[1], :]
                 encoded = self.encoder(x)
-                out = self.head(encoded[:, -1, :])
-                return out.reshape(x.shape[0], self.horizon, 3)
+                return self.head(encoded[:, -1, :])
 
         self.module = _Model()
 

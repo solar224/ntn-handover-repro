@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from .config import checkpoint_dir, load_config
-from .data import load_dataset
+from .data import load_dataset, validate_dataset_provenance
 from .deps import require_numpy, require_torch
 from .models import TransformerTrajectoryModel
 from .utils import set_seed, write_metrics_csv
@@ -28,15 +28,20 @@ def build_samples(cfg, horizon: int, fast: bool = False):
     ys = []
     stride = 4 if fast else 1
     max_t = plane_pos.shape[0] - horizon
-    for k in range(plane_pos.shape[1]):
-        for t in range(history, max_t, stride):
-            xs.append(plane_pos[t - history : t, k, :])
-            ys.append(plane_pos[t : t + horizon, k, :])
+    # Time-major ordering lets the train/validation split hold out a contiguous
+    # future interval instead of leaking overlapping neighboring windows.
+    for t in range(history - 1, max_t, stride):
+        for k in range(plane_pos.shape[1]):
+            # Each sample ends at the current position t and targets only t+h,
+            # matching Eqs. (7)-(9) in the paper.
+            xs.append(plane_pos[t - history + 1 : t + 1, k, :])
+            ys.append(plane_pos[t + horizon, k, :])
     return np.stack(xs), np.stack(ys)
 
 
 def train_transformer(config: str | Path, horizon: int, fast: bool = False, epochs: int | None = None) -> Path:
     cfg = load_config(config)
+    validate_dataset_provenance(cfg)
     set_seed(int(cfg["project"]["seed"]) + horizon)
     np = require_numpy()
     torch = require_torch()
@@ -48,15 +53,27 @@ def train_transformer(config: str | Path, horizon: int, fast: bool = False, epoc
     print(f"Using device: {device_label}", flush=True)
     x, y = build_samples(cfg, horizon, fast=fast)
     rng = np.random.default_rng(int(cfg["project"]["seed"]))
-    perm = rng.permutation(len(x))
-    split = int(0.85 * len(x))
-    train_idx, val_idx = perm[:split], perm[split:]
-    x_train = torch.tensor(x[train_idx], dtype=torch.float32)
-    y_train = torch.tensor(y[train_idx], dtype=torch.float32)
-    x_val = torch.tensor(x[val_idx], dtype=torch.float32, device=device)
-    y_val = torch.tensor(y[val_idx], dtype=torch.float32, device=device)
 
     tcfg = cfg["transformer"]
+    split_mode = str(tcfg.get("split_mode", "chronological"))
+    if split_mode != "chronological":
+        raise ValueError(
+            f"Unsupported Transformer split_mode {split_mode!r}; "
+            "paper reconstruction requires a chronological holdout."
+        )
+    validation_fraction = float(tcfg.get("validation_fraction", 0.15))
+    if not 0.0 < validation_fraction < 1.0:
+        raise ValueError("transformer.validation_fraction must be between 0 and 1.")
+    samples_per_time = int(cfg["data"]["num_airplanes"])
+    num_sample_times = len(x) // samples_per_time
+    train_sample_times = int((1.0 - validation_fraction) * num_sample_times)
+    train_sample_times = min(max(1, train_sample_times), num_sample_times - 1)
+    split = train_sample_times * samples_per_time
+    x_train = torch.tensor(x[:split], dtype=torch.float32)
+    y_train = torch.tensor(y[:split], dtype=torch.float32)
+    x_val = torch.tensor(x[split:], dtype=torch.float32, device=device)
+    y_val = torch.tensor(y[split:], dtype=torch.float32, device=device)
+
     model = TransformerTrajectoryModel(
         history_length=int(cfg["data"]["history_length"]),
         horizon=horizon,
@@ -97,6 +114,8 @@ def train_transformer(config: str | Path, horizon: int, fast: bool = False, epoc
             "model_state": model.state_dict(),
             "horizon": horizon,
             "history_length": int(cfg["data"]["history_length"]),
+            "split_mode": split_mode,
+            "validation_fraction": validation_fraction,
             "config": cfg,
             "device": str(device),
             "device_label": device_label,

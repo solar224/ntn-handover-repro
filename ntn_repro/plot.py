@@ -9,15 +9,19 @@ from .utils import read_metrics_csv
 
 
 STYLE = {
-    "a2c": {"label": "Our Framework", "color": "#1b9e77"},
+    "a2c_h5": {"label": "Our Framework", "color": "#1b9e77"},
+    "a2c_h25": {"label": "Our Framework (Horizon 25)", "color": "#377eb8"},
     "dqn": {"label": "DQN Approach", "color": "#d95f02"},
     "random": {"label": "Random Approach", "color": "#7570b3"},
-    "actor_critic": {"label": "Actor-Critic", "color": "#e7298a"},
+    "actor_critic_h5": {"label": "Actor-Critic", "color": "#e7298a"},
 }
 
 
-def _load_first_metrics(mdir: Path, agent: str):
-    paths = sorted(mdir.glob(f"{agent}*.csv"))
+def _load_variant_metrics(mdir: Path, variant: str):
+    exact = mdir / f"{variant}.csv"
+    if exact.exists():
+        return read_metrics_csv(exact)
+    paths = sorted(mdir.glob(f"{variant}_seed*.csv"))
     return read_metrics_csv(paths[0]) if paths else []
 
 
@@ -28,7 +32,17 @@ def plot_paper_figures(config: str | Path) -> list[Path]:
     fdir = figures_dir(cfg)
     outputs: list[Path] = []
 
-    rows_by_agent = {agent: _load_first_metrics(mdir, agent) for agent in ["a2c", "dqn", "random"]}
+    comparison_variants = ["a2c_h5", "dqn", "random"]
+    rows_by_agent = {variant: _load_variant_metrics(mdir, variant) for variant in comparison_variants}
+    missing = [variant for variant, rows in rows_by_agent.items() if not rows]
+    ablation_agents = ["a2c_h5", "a2c_h25", "actor_critic_h5"]
+    missing.extend(variant for variant in ablation_agents if not _load_variant_metrics(mdir, variant))
+    if missing:
+        raise FileNotFoundError(
+            "Missing paper-figure metrics for: "
+            + ", ".join(sorted(set(missing)))
+            + ". Retrain the paper-aligned variants before plotting."
+        )
     fig, ax = plt.subplots(figsize=(8, 4.5))
     for agent, rows in rows_by_agent.items():
         if not rows:
@@ -62,7 +76,7 @@ def plot_paper_figures(config: str | Path) -> list[Path]:
     labels = []
     values = []
     colors = []
-    for agent in ["a2c", "dqn", "random"]:
+    for agent in comparison_variants:
         rows = rows_by_agent[agent]
         if not rows:
             continue
@@ -82,9 +96,8 @@ def plot_paper_figures(config: str | Path) -> list[Path]:
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    ablation_agents = ["a2c", "actor_critic"]
     for agent in ablation_agents:
-        rows = _load_first_metrics(mdir, agent)
+        rows = _load_variant_metrics(mdir, agent)
         if not rows:
             continue
         ax.plot([r["episode"] for r in rows], [r["total_reward"] for r in rows], label=STYLE[agent]["label"], color=STYLE[agent]["color"])
